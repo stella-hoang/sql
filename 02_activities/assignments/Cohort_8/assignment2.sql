@@ -1,16 +1,21 @@
 /* ASSIGNMENT 2 */
 /* SECTION 2 */
+/* Participant Name: STELLA HOANG */
 
 -- COALESCE
 /* 1. Our favourite manager wants a detailed long list of products, but is afraid of tables! 
 We tell them, no problem! We can produce a list with all of the appropriate details. 
 
 Using the following syntax you create our super cool and not at all needy manager a list:
-
+*/
 SELECT 
-product_name || ', ' || product_size|| ' (' || product_qty_type || ')'
-FROM product
+product_name || ', ' || 
+COALESCE(product_size, '') || ' (' || 
+COALESCE(product_qty_type, 'unit') || ')' 
+FROM product;
 
+
+/*
 But wait! The product table has some bad data (a few NULL values). 
 Find the NULLs and then using COALESCE, replace the NULL with a 
 blank for the first problem, and 'unit' for the second problem. 
@@ -31,18 +36,33 @@ You can either display all rows in the customer_purchases table, with the counte
 each new market date for each customer, or select only the unique market dates per customer 
 (without purchase details) and number those visits. 
 HINT: One of these approaches uses ROW_NUMBER() and one uses DENSE_RANK(). */
-
+SELECT
+customer_id,
+market_date,
+ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY market_date) AS visit_number
+FROM customer_purchases;
 
 
 /* 2. Reverse the numbering of the query from a part so each customer’s most recent visit is labeled 1, 
 then write another query that uses this one as a subquery (or temp table) and filters the results to 
 only the customer’s most recent visit. */
-
-
+SELECT *
+FROM (
+SELECT 
+customer_id,
+market_date,
+ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY market_date DESC) AS visit_number
+FROM customer_purchases
+)
+AS recent_visits
+WHERE visit_number = 1;
+	
 
 /* 3. Using a COUNT() window function, include a value along with each row of the 
 customer_purchases table that indicates how many different times that customer has purchased that product_id. */
-
+SELECT *,
+COUNT(*) OVER (PARTITION BY customer_id, product_id) AS purchase_count
+FROM customer_purchases;
 
 
 -- String manipulations
@@ -56,11 +76,18 @@ Remove any trailing or leading whitespaces. Don't just use a case statement for 
 | Habanero Peppers - Organic | Organic     |
 
 Hint: you might need to use INSTR(product_name,'-') to find the hyphens. INSTR will help split the column. */
-
+SELECT 
+product_name,
+NULLIF(TRIM(SUBSTR(product_name, INSTR(product_name, '-') + 1)), '') AS description
+FROM product;
 
 
 /* 2. Filter the query to show any product_size value that contain a number with REGEXP. */
-
+SELECT 
+product_name, 
+product_size
+FROM product
+WHERE product_size REGEXP '[0-9]';
 
 
 -- UNION
@@ -72,8 +99,27 @@ HINT: There are a possibly a few ways to do this query, but if you're struggling
 "best day" and "worst day"; 
 3) Query the second temp table twice, once for the best day, once for the worst day, 
 with a UNION binding them. */
+WITH TotalSalesByDate AS (
+SELECT 
+market_date,
+SUM(quantity * cost_to_customer_per_qty) AS total_sales_by_date 
+FROM customer_purchases
+GROUP BY market_date
+)
 
+SELECT 
+market_date, 
+total_sales_by_date
+FROM TotalSalesByDate
+WHERE total_sales_by_date = (SELECT MAX(total_sales_by_date) FROM TotalSalesByDate)
 
+UNION
+
+SELECT 
+market_date, 
+total_sales_by_date
+FROM TotalSalesByDate
+WHERE total_sales_by_date = (SELECT MIN(total_sales_by_date) FROM TotalSalesByDate);
 
 
 /* SECTION 3 */
@@ -88,7 +134,37 @@ Remember, CROSS JOIN will explode your table rows, so CROSS JOIN should likely b
 Think a bit about the row counts: how many distinct vendors, product names are there (x)?
 How many customers are there (y). 
 Before your final group by you should have the product of those two queries (x*y).  */
+WITH CustomerCount AS (
+SELECT 
+COUNT(DISTINCT customer_id) AS customer_count
+FROM customer
+),
+VendorProductSales AS (
+ SELECT 
+ vi.vendor_id,
+ vi.product_id,
+ cc.customer_count
+ FROM vendor_inventory vi,
+ CustomerCount cc
+),
+Calculations AS (
+ SELECT 
+v.vendor_name,
+p.product_name,    
+vps.customer_count,
+vps.customer_count * 5 * vi.original_price AS total_revenue
+FROM VendorProductSales vps
+JOIN vendor v ON vps.vendor_id = v.vendor_id
+JOIN vendor_inventory vi ON vps.vendor_id = vi.vendor_id AND vps.product_id = vi.product_id
+JOIN product p ON vi.product_id = p.product_id
+)
 
+SELECT DISTINCT
+vendor_name,
+product_name,
+total_revenue
+FROM 
+Calculations;
 
 
 -- INSERT
@@ -96,28 +172,51 @@ Before your final group by you should have the product of those two queries (x*y
 This table will contain only products where the `product_qty_type = 'unit'`. 
 It should use all of the columns from the product table, as well as a new column for the `CURRENT_TIMESTAMP`.  
 Name the timestamp column `snapshot_timestamp`. */
-
+DROP TABLE IF EXISTS temp.product_units;
+CREATE TEMP TABLE product_units AS
+SELECT *,
+CURRENT_TIMESTAMP AS snapshot_timestamp 
+FROM product
+WHERE product_qty_type = 'unit';
 
 
 /*2. Using `INSERT`, add a new row to the product_units table (with an updated timestamp). 
 This can be any product you desire (e.g. add another record for Apple Pie). */
-
+INSERT INTO product_units
+VALUES('24','Cinnamon Bun','1 bun', '4','unit',CURRENT_TIMESTAMP);
 
 
 -- DELETE
 /* 1. Delete the older record for the whatever product you added. 
 
 HINT: If you don't specify a WHERE clause, you are going to have a bad time.*/
-
+DELETE FROM product_units
+WHERE product_id = 24;
+SELECT * FROM product_units;
 
 
 -- UPDATE
 /* 1.We want to add the current_quantity to the product_units table. 
 First, add a new column, current_quantity to the table using the following syntax.
-
+*/
 ALTER TABLE product_units
 ADD current_quantity INT;
 
+WITH LastQuantity AS(
+SELECT
+product_id,
+quantity,
+ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY market_date DESC) AS latest
+FROM vendor_inventory
+)
+UPDATE product_units
+SET current_quantity = 
+COALESCE((SELECT quantity FROM LastQuantity
+WHERE product_units.product_id = LastQuantity.product_id
+AND LastQuantity.latest = 1), 0);
+
+
+/*
 Then, using UPDATE, change the current_quantity equal to the last quantity value from the vendor_inventory details.
 
 HINT: This one is pretty hard. 
