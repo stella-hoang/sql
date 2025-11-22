@@ -55,6 +55,21 @@ The store wants to keep customer addresses. Propose two architectures for the CU
 
 ```
 Your answer...
+#### Participant Name: Stella Hoang
+
+Type 1 SCD (Retain changes)
+Architecture: 
+If an existing customer, their customer_id (unique identifier) would be found (using customer_first_name, customer_last_name, customer_phone, customer_email - and/or a combination thereof, from the customer table) and a new record/rows** with an incremental record value in the record_number column (of the customer_address table) would be added (find and +1 [add one] to the next record_number value up), with the additon of the corresponding new address/rows**.
+    **rows as one (1) address record consists of: customer_address1, customer_address2, customer_city, customer_postal_code, customer_country. These rows for one (1) address record would have the same/one (1) record_number value.
+Thereby, it is possible an existing customer may have multiple record rows for different addressses.
+- SQL for this architecture would involve INSERT INTO, VALUES, COALESCE, and UPDATE commands.
+
+Type 2 SCD (Overwrite changes)
+Architecture: 
+If an existing customer, their customer_id (unique identifier) would be found (using customer_first_name, customer_last_name, customer_phone, customer_email. - and/or a combination thereof, from the customer table) and the data in the: customer_address1, customer_address2, customer_city, customer_postal_code, customer_country columns (of the customer_address table) would be input/updated with the new address data regardless of any existing values.
+- SQL for this architecture would involve the UPDATE command.
+
+**ASSUMPTION:** Prompt 3 did not explictly state to "write SQL" like Section 2, which is why full code was not provided. The Assignment 2 rubric did not indicate this either.
 ```
 
 ***
